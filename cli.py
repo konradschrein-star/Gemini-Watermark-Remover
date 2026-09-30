@@ -62,8 +62,8 @@ def main() -> int:
         "-m",
         "--method",
         choices=[m.value for m in InpaintMethod],
-        default=InpaintMethod.TELEA.value,
-        help="Inpainting / reconstruction algorithm (default: telea).",
+        default=InpaintMethod.ALPHA_REVERSE.value,
+        help="Inpainting / reconstruction algorithm (default: alpha_reverse).",
     )
     parser.add_argument(
         "--region",

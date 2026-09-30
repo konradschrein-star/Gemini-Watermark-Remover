@@ -24,7 +24,7 @@ def process_image(
     input_path: str,
     output_path: str,
     watermark_type: WatermarkType = WatermarkType.AUTO,
-    method: InpaintMethod = InpaintMethod.TELEA,
+    method: InpaintMethod = InpaintMethod.ALPHA_REVERSE,
     manual_region: Optional[Tuple[int, int, int, int]] = None,
     verify: bool = False,
     verifier_backend: str = "jev-omni",
@@ -36,8 +36,8 @@ def process_image(
     if img is None:
         raise ValueError(f"Could not open image file at {input_path}")
 
-    w_type, bbox, mask = detect_watermark(img, watermark_type=watermark_type, manual_region=manual_region)
-    cleaned = remove_watermark_frame(img, bbox=bbox, mask=mask, method=method)
+    w_type, bbox, mask, alpha_map = detect_watermark(img, watermark_type=watermark_type, manual_region=manual_region)
+    cleaned = remove_watermark_frame(img, bbox=bbox, mask=mask, method=method, alpha_map=alpha_map)
 
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
     cv2.imwrite(output_path, cleaned)
@@ -60,7 +60,7 @@ def process_video(
     input_path: str,
     output_path: str,
     watermark_type: WatermarkType = WatermarkType.AUTO,
-    method: InpaintMethod = InpaintMethod.TELEA,
+    method: InpaintMethod = InpaintMethod.ALPHA_REVERSE,
     manual_region: Optional[Tuple[int, int, int, int]] = None,
     ffmpeg_binary: str = "ffmpeg",
     progress_callback: Optional[Callable[[int, int], None]] = None,
@@ -94,7 +94,7 @@ def process_video(
         cap.release()
         raise ValueError("Could not read sample frame from video")
 
-    w_type, bbox, mask = detect_watermark(
+    w_type, bbox, mask, alpha_map = detect_watermark(
         mid_frame, watermark_type=watermark_type, manual_region=manual_region
     )
 
@@ -118,7 +118,9 @@ def process_video(
             if not ret or frame is None:
                 break
 
-            cleaned = remove_watermark_frame(frame, bbox=bbox, mask=mask, method=method)
+            cleaned = remove_watermark_frame(
+                frame, bbox=bbox, mask=mask, method=method, alpha_map=alpha_map
+            )
             writer.write(cleaned)
 
             if processed == n_frames // 2:
