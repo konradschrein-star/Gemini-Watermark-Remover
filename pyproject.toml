@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gemini-watermark-remover"
+version = "1.0.0"
+description = "High-fidelity watermark remover for Google Gemini (Imagen 3) and Veo videos/images with AI/VLM verification."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "opencv-python>=4.8.0",
+    "numpy>=1.24.0",
+]
+
+[project.scripts]
+gemini-watermark-remover = "cli:main"

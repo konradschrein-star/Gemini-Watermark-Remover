@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.avi
+*.mp4
+.temp_*
+*.log
+.venv/
+env/
+dist/
+build/
+*.egg-info/
