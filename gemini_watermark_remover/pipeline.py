@@ -72,7 +72,11 @@ def detect_and_remove_image_if_present(
             "status": "clean_untouched",
             "kind": "image",
             "detected": False,
+            "input": input_path,
+            "output": target_path,
+            "watermark_type": det.watermark_type.value,
             "candidate_label": det.candidate_label,
+            "bbox": {"x0": det.bbox.x0, "y0": det.bbox.y0, "x1": det.bbox.x1, "y1": det.bbox.y1},
             "ncc_before": round(det.ncc, 4),
             "grad_ncc_before": round(det.grad_ncc, 4),
             "core_diff": round(det.core_diff, 2),
@@ -80,7 +84,11 @@ def detect_and_remove_image_if_present(
         }
 
     inner_roi = img[det.bbox.y0 : det.bbox.y1, det.bbox.x0 : det.bbox.x1]
-    alpha_gain = calibrate_optimal_alpha_gain(inner_roi, det.alpha_map)
+    alpha_gain = calibrate_optimal_alpha_gain(
+        inner_roi,
+        det.alpha_map,
+        nominal_gain=det.nominal_gain,
+    )
 
     remove_watermark_frame(
         img,
@@ -89,6 +97,7 @@ def detect_and_remove_image_if_present(
         method=InpaintMethod.ALPHA_REVERSE,
         alpha_map=det.alpha_map,
         alpha_gain=alpha_gain,
+        nominal_gain=det.nominal_gain,
         in_place=True,
     )
 
@@ -122,6 +131,9 @@ def detect_and_remove_image_if_present(
         "status": "removed",
         "kind": "image",
         "detected": True,
+        "input": input_path,
+        "output": out_abs,
+        "watermark_type": det.watermark_type.value,
         "candidate_label": det.candidate_label,
         "bbox": {"x0": det.bbox.x0, "y0": det.bbox.y0, "x1": det.bbox.x1, "y1": det.bbox.y1},
         "alpha_gain": round(alpha_gain, 3),
@@ -173,15 +185,44 @@ def detect_and_remove_video_if_present(
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    mid_idx = max(0, n_frames // 2)
-    cap.set(cv2.CAP_PROP_POS_FRAMES, mid_idx)
-    ret, sample_frame = cap.read()
-    if not ret or sample_frame is None:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-        mid_idx = 0
-        ret, sample_frame = cap.read()
+    sample_indices = sorted(
+        set(
+            idx
+            for idx in (
+                0,
+                max(0, n_frames // 6),
+                max(0, (n_frames * 2) // 6),
+                max(0, n_frames // 2),
+                max(0, (n_frames * 4) // 6),
+                max(0, (n_frames * 5) // 6),
+            )
+            if 0 <= idx < max(1, n_frames)
+        )
+    )
 
-    if not ret or sample_frame is None:
+    best_sample_frame = None
+    best_det = None
+    best_idx = 0
+
+    for idx in sample_indices:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+        ret, frame_cand = cap.read()
+        if not ret or frame_cand is None:
+            continue
+        det_cand = detect_watermark_fast(frame_cand)
+        if best_det is None:
+            best_det = det_cand
+            best_sample_frame = frame_cand
+            best_idx = idx
+        elif det_cand.detected and (
+            not best_det.detected
+            or (det_cand.ncc + det_cand.grad_ncc) > (best_det.ncc + best_det.grad_ncc)
+        ):
+            best_det = det_cand
+            best_sample_frame = frame_cand
+            best_idx = idx
+
+    if best_sample_frame is None or best_det is None:
         cap.release()
         return {
             "status": "error",
@@ -191,7 +232,9 @@ def detect_and_remove_video_if_present(
             "elapsed_ms": round((time.perf_counter() - t0) * 1000.0, 3),
         }
 
-    det = detect_watermark_fast(sample_frame)
+    sample_frame = best_sample_frame
+    det = best_det
+    mid_idx = best_idx
     detect_ms = round((time.perf_counter() - t0) * 1000.0, 2)
 
     if not det.detected:
@@ -203,7 +246,11 @@ def detect_and_remove_video_if_present(
             "status": "clean_untouched",
             "kind": "video",
             "detected": False,
+            "input": input_path,
+            "output": target_path,
+            "watermark_type": det.watermark_type.value,
             "candidate_label": det.candidate_label,
+            "bbox": {"x0": det.bbox.x0, "y0": det.bbox.y0, "x1": det.bbox.x1, "y1": det.bbox.y1},
             "ncc_before": round(det.ncc, 4),
             "grad_ncc_before": round(det.grad_ncc, 4),
             "core_diff": round(det.core_diff, 2),
@@ -212,7 +259,11 @@ def detect_and_remove_video_if_present(
         }
 
     inner_roi = sample_frame[det.bbox.y0 : det.bbox.y1, det.bbox.x0 : det.bbox.x1]
-    alpha_gain = calibrate_optimal_alpha_gain(inner_roi, det.alpha_map)
+    alpha_gain = calibrate_optimal_alpha_gain(
+        inner_roi,
+        det.alpha_map,
+        nominal_gain=det.nominal_gain,
+    )
 
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
@@ -276,6 +327,7 @@ def detect_and_remove_video_if_present(
                 method=InpaintMethod.ALPHA_REVERSE,
                 alpha_map=det.alpha_map,
                 alpha_gain=alpha_gain,
+                nominal_gain=det.nominal_gain,
                 in_place=True,
             )
 
@@ -318,6 +370,9 @@ def detect_and_remove_video_if_present(
         "status": "removed",
         "kind": "video",
         "detected": True,
+        "input": input_path,
+        "output": out_abs,
+        "watermark_type": det.watermark_type.value,
         "candidate_label": det.candidate_label,
         "frames_processed": frames_processed,
         "resolution": f"{w}x{h}",
